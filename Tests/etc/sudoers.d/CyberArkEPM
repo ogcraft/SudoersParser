@@ -1,0 +1,11 @@
+##
+# Override built-in defaults
+##
+
+Defaults:%_cyberarkepm_sudoers timestamp_timeout=0
+
+##
+# User specification
+##
+
+%_cyberarkepm_sudoers   ALL = (ALL) PASSWD: ALL
