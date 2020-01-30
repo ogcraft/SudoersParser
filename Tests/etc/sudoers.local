@@ -57,5 +57,4 @@ root		ALL = (ALL) ALL
 
 ## Read drop-in files from /private/etc/sudoers.d
 ## (the '#' here does not indicate a comment)
-#include sudoers.local
 #includedir /private/etc/sudoers.d
