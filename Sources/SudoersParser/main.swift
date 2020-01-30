@@ -48,6 +48,21 @@ func extractIncludes(includes: [String]) -> (includeFiles : [String], includeDir
     return (includeFiles: files, includeDirs: dirs)
 }
 
+func collectSudoersFiles(fromDirs: [String]) -> [String] {
+    let fm = FileManager.default
+    var outputFiles = [String]()
+    fromDirs.forEach { dir in
+        if let files = try? fm.contentsOfDirectory(atPath: dir) {
+            print("In dir: \(dir) read files: \(files)")
+            files.forEach { file in
+                outputFiles.append(standardizingInclude(include: file, dir: dir))
+            }
+        }
+    }
+    return outputFiles
+}
+
+
 func standardizingIncludes(includes: [String], rootDir: String) -> (includeFiles : [String], includeDirs: [String]) {
     print("includes: \(includes), rootDir: \(rootDir)")
     var files = [String]()
@@ -71,7 +86,9 @@ func standardizingIncludes(includes: [String], rootDir: String) -> (includeFiles
 }
 
 func parseSudoersFileInternal(filePath: String, alreadyParsedFiles: Set<String>) -> ParsedSudoers? {
+    
     print("===== parseSudoersFile: \(filePath)")
+    
     let fileDir = (filePath as NSString).deletingLastPathComponent
     
     guard let sudoersAsString = try? String(contentsOfFile: filePath, encoding: String.Encoding.utf8) else {
@@ -80,31 +97,19 @@ func parseSudoersFileInternal(filePath: String, alreadyParsedFiles: Set<String>)
     }
     let sudoersAsLines = sudoersAsString.split { $0.isNewline }
     
-    let includes = sudoersAsLines.filter { $0.starts(with: "#include") }.map { String($0)}
+    let includesLines = sudoersAsLines.filter { $0.starts(with: "#include") }.map { String($0)}
     
-    var (includeFiles, includeDirs) = extractIncludes(includes: includes)
+    let (includeFiles, includeDirs) = extractIncludes(includes: includesLines)
 
-    //print("includeFiles: \(includeFiles), includeDirs \(includeDirs)\n\n")
     
     var prefixedIncludeFiles = includeFiles.map{ standardizingInclude(include: $0, dir: fileDir) }
     
     // Collect additional files form include directories
-    let fm = FileManager.default
-    
-    includeDirs.forEach { dir in
-        if let files = try? fm.contentsOfDirectory(atPath: dir) {
-            print("In dir: \(dir) files: \(files)")
-            files.forEach { file in
-                prefixedIncludeFiles.append(standardizingInclude(include: file, dir: dir))
-            }
-        }
-        
-    }
-    print("From: \(filePath) prefixedIncludeFiles: \(prefixedIncludeFiles), includeDirs \(includeDirs)\n\n")
-    // Collect additional files form include directories
+    prefixedIncludeFiles.append(contentsOf: collectSudoersFiles(fromDirs: includeDirs))
     
     var parsedIncludedFiles = [ParsedSudoers]()
     
+    // Parse collected sudoers files
     for fullSudoersPath in prefixedIncludeFiles {
         if alreadyParsedFiles.contains(fullSudoersPath) {
             print("File \(fullSudoersPath) parsed already. Ignoring")
@@ -115,8 +120,7 @@ func parseSudoersFileInternal(filePath: String, alreadyParsedFiles: Set<String>)
             parsedIncludedFiles.append(parsedSudoers)
         }
     }
-    
-    
+
     return ParsedSudoers(filePath: filePath,
                          fileDir: fileDir,
                          fileContent: sudoersAsString,
