@@ -9,3 +9,4 @@ Defaults:%_additional_sudoers timestamp_timeout=0
 ##
 
 %_additional_sudoers   ALL = (ALL) PASSWD: ALL
+#includedir Tests/etc/sudoers.d
