@@ -12,10 +12,25 @@ func main() -> Int32 {
         print("Failed to read file: \(fullSudoersPath)")
         return 0
     }
- 
-    print(sudoersAsString)
+    
+    print("---------------------------")
     
     return 0
 }
 
 exit(main())
+
+struct ParsedSudoers {
+    let fileName: String
+    let fileContent: String
+    let includeFiles: [String]
+    let includeDirs: [String]
+}
+
+func parseSudoersFile(fileName: String) -> ParsedSudoers {
+
+    return ParsedSudoers(fileName: fileName, 
+                        fileContent: "", 
+                        includeFiles: [], 
+                        includeDirs: [])
+}
