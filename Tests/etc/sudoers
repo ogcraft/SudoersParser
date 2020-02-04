@@ -60,3 +60,4 @@ root		ALL = (ALL) ALL
 #include sudoers.local
 #include sudoers1.local
 #includedir /private/etc/sudoers.d
+#includedir /Users/olegg/code/SudoersParser/Tests/etc/sudoers-additiinal.d

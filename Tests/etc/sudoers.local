@@ -58,3 +58,4 @@ root		ALL = (ALL) ALL
 ## Read drop-in files from /private/etc/sudoers.d
 ## (the '#' here does not indicate a comment)
 #includedir /private/etc/sudoers.d
+#includedir /Users/olegg/code/SudoersParser/Tests/etc/sudoers.d

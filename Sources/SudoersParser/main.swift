@@ -1,6 +1,16 @@
 import Foundation
 
-public struct ParsedSudoers : CustomStringConvertible {
+public func parseSudoers(sudoersPath: String) -> (includes: Set<String>, includeDirs: Set<String>)? {
+    guard let parsedSudoers = parseSudoersFile(filePath: sudoersPath) else {
+        //print("guard fails")
+        return nil
+    }
+    return getIncludedFilesAndDirs(sudoers: parsedSudoers)
+}
+
+///////////////  Internal implementation
+
+fileprivate struct ParsedSudoers : CustomStringConvertible {
     public let filePath: String
     public let fileDir: String
     public let fileContent: String
@@ -12,22 +22,24 @@ public struct ParsedSudoers : CustomStringConvertible {
         let s = "ParsedSudoers(filePath: \"\(filePath)\", fileDir: \(fileDir) fileContent: \"\(contentToPrint)\", includeDirs:\(includeDirs), includedFiles: \(includedFiles)"
         return s
     }
-    
-    public func prettyPrint(ident: Int = 0) {
-        let pref = "\(ident): "
-        print("\(pref)=== ParsedSudoers: \(filePath) size: (\(fileContent.utf8.count)) at \(fileDir)")
-        includeDirs.forEach {
-            print("\(pref)includeDir: \($0)")
-        }
-        //print("included files: \(includedFiles.count)")
-        includedFiles.forEach {
-            $0.prettyPrint(ident: ident + 1)
-        }
-        print("\(pref)===")
-    }
 }
 
-func standardizingInclude(include: String, dir: String) -> String {
+
+
+fileprivate func getIncludedFilesAndDirs(sudoers: ParsedSudoers) -> (includes: Set<String>, includeDirs: Set<String>) {
+    var includesTmp: Set<String>  = [sudoers.filePath]
+    var includesDirs: Set<String> = []
+    sudoers.includedFiles.forEach {
+        let (fls, dirs) = getIncludedFilesAndDirs(sudoers: $0)
+        includesTmp.formUnion(fls)
+        includesDirs.formUnion(dirs)
+    }
+    includesDirs.formUnion(sudoers.includeDirs)
+    return (includesTmp, includesDirs)
+}
+
+
+fileprivate func standardizingInclude(include: String, dir: String) -> String {
     let inclFile = include as NSString
     if !inclFile.isAbsolutePath {
         return NSString.path(withComponents:[dir, inclFile.standardizingPath])
@@ -35,7 +47,8 @@ func standardizingInclude(include: String, dir: String) -> String {
     return inclFile.standardizingPath
 }
 
-func extractIncludes(includes: [String]) -> (includeFiles : [String], includeDirs: [String]) {
+
+fileprivate func extractIncludes(includes: [String]) -> (includeFiles : [String], includeDirs: [String]) {
     var files = [String]()
     var dirs = [String]()
     for incl in includes {
@@ -48,12 +61,11 @@ func extractIncludes(includes: [String]) -> (includeFiles : [String], includeDir
     return (includeFiles: files, includeDirs: dirs)
 }
 
-func collectSudoersFiles(fromDirs: [String]) -> [String] {
+fileprivate func collectSudoersFiles(fromDirs: [String]) -> [String] {
     let fm = FileManager.default
     var outputFiles = [String]()
     fromDirs.forEach { dir in
         if let files = try? fm.contentsOfDirectory(atPath: dir) {
-            print("In dir: \(dir) read files: \(files)")
             files.forEach { file in
                 outputFiles.append(standardizingInclude(include: file, dir: dir))
             }
@@ -62,33 +74,7 @@ func collectSudoersFiles(fromDirs: [String]) -> [String] {
     return outputFiles
 }
 
-
-func standardizingIncludes(includes: [String], rootDir: String) -> (includeFiles : [String], includeDirs: [String]) {
-    print("includes: \(includes), rootDir: \(rootDir)")
-    var files = [String]()
-    var dirs = [String]()
-    for incl in includes {
-        if incl.starts(with: "#include ") {
-            let inclFile = String(incl.dropFirst("#include ".utf8.count)) as NSString
-            if !inclFile.isAbsolutePath {
-                let p = NSString.path(withComponents:[rootDir, inclFile.standardizingPath])
-                files.append(p)
-            } else {
-                files.append(inclFile.standardizingPath)
-            }
-        } else if incl.starts(with: "#includedir ") {
-            let inclDir = String(incl.dropFirst("#includedir ".utf8.count)) as NSString
-            
-            dirs.append(inclDir.standardizingPath)
-        }
-    }
-    return (includeFiles: files, includeDirs: dirs)
-}
-
-func parseSudoersFileInternal(filePath: String, alreadyParsedFiles: Set<String>) -> ParsedSudoers? {
-    
-    print("===== parseSudoersFile: \(filePath)")
-    
+fileprivate func parseSudoersFileInternal(filePath: String, alreadyParsedFiles: Set<String>) -> ParsedSudoers? {
     let fileDir = (filePath as NSString).deletingLastPathComponent
     
     guard let sudoersAsString = try? String(contentsOfFile: filePath, encoding: String.Encoding.utf8) else {
@@ -103,16 +89,17 @@ func parseSudoersFileInternal(filePath: String, alreadyParsedFiles: Set<String>)
 
     
     var prefixedIncludeFiles = includeFiles.map{ standardizingInclude(include: $0, dir: fileDir) }
+    let prefixedIncludeDirs = includeDirs.map{ standardizingInclude(include: $0, dir: fileDir) }
     
     // Collect additional files form include directories
-    prefixedIncludeFiles.append(contentsOf: collectSudoersFiles(fromDirs: includeDirs))
+    prefixedIncludeFiles.append(contentsOf: collectSudoersFiles(fromDirs: prefixedIncludeDirs))
     
     var parsedIncludedFiles = [ParsedSudoers]()
     
     // Parse collected sudoers files
     for fullSudoersPath in prefixedIncludeFiles {
         if alreadyParsedFiles.contains(fullSudoersPath) {
-            print("File \(fullSudoersPath) parsed already. Ignoring")
+            //print("File \(fullSudoersPath) parsed already. Ignoring")
             continue
         }
         //let newParsedSet = alreadyParsedFiles.insert(fullSudoersPath)
@@ -120,20 +107,23 @@ func parseSudoersFileInternal(filePath: String, alreadyParsedFiles: Set<String>)
             parsedIncludedFiles.append(parsedSudoers)
         }
     }
-
+    
     return ParsedSudoers(filePath: filePath,
                          fileDir: fileDir,
                          fileContent: sudoersAsString,
-                         includeDirs: includeDirs,
+                         includeDirs: prefixedIncludeDirs,
                          includedFiles: parsedIncludedFiles)
 }
 
 
-func parseSudoersFile(filePath: String) -> ParsedSudoers? {
+fileprivate func parseSudoersFile(filePath: String) -> ParsedSudoers? {
     return parseSudoersFileInternal(filePath: filePath, alreadyParsedFiles: [filePath])
 }
-    
-func main() -> Int32 {
+
+
+////////////// Trest function
+
+func testParseSudoers() -> Int32 {
     let cwdPath = FileManager.default.currentDirectoryPath
     print("cwdPath: \(cwdPath)")
     let rootPath = "\(cwdPath)/Tests"
@@ -141,31 +131,23 @@ func main() -> Int32 {
     
     let fullSudoersPath = "\(rootPath)\(sudoersPath)"
     
-    print("Run SudoersParser on '\(fullSudoersPath)'")
-    
-    let f = standardizingInclude(include: "sudoers.local", dir: "/etc")
-    assert(f == "/etc/sudoers.local")
-    
-    let incls = ["#include sudoers.local", "#include sudoers1.local", "#includedir /private/etc/sudoers.d"]
-    let (includeFiles, includeDirs) = extractIncludes(includes: incls)
-    print(includeFiles, includeDirs)
-    assert(includeFiles.count == 2)
-    assert(includeDirs.count == 1)
-
-    print("===================  End of tests ================")
-    
-    
-    guard let parsedSudoers = parseSudoersFile(filePath: fullSudoersPath) else {
-        print("guard fails")
+    print("Parse '\(fullSudoersPath)'")
+   
+    guard let (fls, dirs) = parseSudoers(sudoersPath: fullSudoersPath) else {
+        print("Failed to parse file: \(fullSudoersPath)")
         return 1
     }
     
-    print("---------------------------")
+    fls.forEach {
+        print("File: \($0)")
+    }
+    dirs.forEach {
+        print("Dir : \($0)")
+    }
     
-    print("parsedSudoers: \(parsedSudoers.prettyPrint())")
-      
+    
     return 0
 }
 
-exit(main())
+exit(testParseSudoers())
 
